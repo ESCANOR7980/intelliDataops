@@ -1,7 +1,7 @@
 import axios from 'axios';
 
-const API = axios.create({ 
-  baseURL: 'https://intellidataops.onrender.com/api'
+const API = axios.create({
+  baseURL: 'https://intellidataops-zbsi.onrender.com/api'
 });
 
 API.interceptors.request.use(c => {
