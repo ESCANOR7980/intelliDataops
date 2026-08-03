@@ -1,49 +1,141 @@
+require('dotenv').config();
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
-const helmet = require('helmet');
 const morgan = require('morgan');
-const rateLimit = require('express-rate-limit');
-require('dotenv').config();
+
+const authRoutes = require('./routes/auth');
 
 const app = express();
 
-// Security Middleware
-app.use(helmet());
-app.use(cors({ 
-  origin: ['http://localhost:5173', 'https://intelli-dataops.vercel.app'], 
-  credentials: true 
-}));
-app.use(express.json({ limit: '10mb' }));
+
+// =====================================================
+// CORS CONFIGURATION
+// =====================================================
+
+const allowedOrigins = [
+  'http://localhost:5173',
+  'http://localhost:3000',
+  'https://intelli-dataops-mdyqgix3j-abhi-353a.vercel.app'
+];
+
+app.use(
+  cors({
+    origin: function (origin, callback) {
+      // Allow requests without an Origin header
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      // Allow known frontend URLs
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      console.log('❌ CORS blocked:', origin);
+
+      return callback(new Error('Not allowed by CORS'));
+    },
+
+    credentials: true,
+
+    methods: [
+      'GET',
+      'POST',
+      'PUT',
+      'PATCH',
+      'DELETE',
+      'OPTIONS'
+    ],
+
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization'
+    ]
+  })
+);
+
+
+// =====================================================
+// MIDDLEWARE
+// =====================================================
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
 app.use(morgan('dev'));
 
-// Rate limiting
-const limiter = rateLimit({ windowMs: 15 * 60 * 1000, max: 200 });
-app.use('/api/', limiter);
 
-// Routes
-app.use('/api/auth', require('./routes/auth'));
-app.use('/api/departments', require('./routes/departments'));
-app.use('/api/datasources', require('./routes/dataSources'));
-app.use('/api/pipelines', require('./routes/pipelines'));
-app.use('/api/blockchain', require('./routes/blockchain'));
-app.use('/api/analytics', require('./routes/analytics'));
-app.use('/api/integrations', require('./routes/integrations'));
-app.use('/api/policies', require('./routes/policies'));
+// =====================================================
+// HEALTH CHECK
+// =====================================================
 
-// Health check
-app.get('/api/health', (req, res) => res.json({ status: 'OK', timestamp: new Date(), service: 'IntelliDataOps' }));
-
-// Error handler
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ success: false, message: err.message || 'Server Error' });
+app.get('/', (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: 'IntelliDataOps Backend API is running',
+    status: 'OK'
+  });
 });
 
-// Connect DB and start
-mongoose.connect(process.env.MONGO_URI)
+
+// =====================================================
+// AUTH ROUTES
+// =====================================================
+
+app.use('/api/auth', authRoutes);
+
+
+// =====================================================
+// 404 HANDLER
+// =====================================================
+
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: `Route not found: ${req.method} ${req.originalUrl}`
+  });
+});
+
+
+// =====================================================
+// ERROR HANDLER
+// =====================================================
+
+app.use((err, req, res, next) => {
+  console.error('❌ SERVER ERROR:', err);
+
+  if (err.message === 'Not allowed by CORS') {
+    return res.status(403).json({
+      success: false,
+      message: 'CORS policy blocked this request'
+    });
+  }
+
+  res.status(500).json({
+    success: false,
+    message: err.message || 'Internal server error'
+  });
+});
+
+
+// =====================================================
+// MONGODB CONNECTION + SERVER
+// =====================================================
+
+const PORT = process.env.PORT || 5000;
+
+mongoose
+  .connect(process.env.MONGO_URI)
   .then(() => {
     console.log('✅ MongoDB Connected');
-    app.listen(process.env.PORT, () => console.log(`🚀 Server running on port ${process.env.PORT}`));
+
+    app.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+    });
   })
-  .catch(err => { console.error('❌ DB Error:', err); process.exit(1); });
+  .catch((err) => {
+    console.error('❌ DB Error:', err);
+    process.exit(1);
+  });
